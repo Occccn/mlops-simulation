@@ -40,8 +40,12 @@ class Fusecalc:
         self.mean_1      = config["CALC_OPTION"]["mean_1"]
         self.mean_2      = config["CALC_OPTION"]["mean_2"]
         # 計算結果関連
-        self.result      = None
-        self.random_seed = config["CALC_OPTION"]["random_seed"]
+        self.result           = None
+        self.position_x_list  = None
+        self.position_y_list  = None
+        self.time_list        = None
+        self.temperature_list = None
+        self.random_seed      = config["CALC_OPTION"]["random_seed"]
 
     def gaussian_2d(self,sigma11, sigma12, sigma21, sigma22, mean_1, mean_2):
         sigma = np.array([[sigma11, sigma12],
@@ -112,6 +116,42 @@ class Fusecalc:
 
         return q
 
+    def sol_2d_diffusion_and_get_onepos_temp(self, x, y, q, dt, dx, dy, a, calctime, index_x, index_y):
+        ''' 2次元拡散方程式を計算する '''
+        step = math.ceil(calctime / dt)
+
+        # 漸化式を反復計算
+        q = q.T
+        self.position_x_list  = [index_x*self.dx for _ in range(step)]
+        self.position_y_list  = [index_y*self.dy for _ in range(step)]
+        self.time_list        = []
+        self.temperature_list = []
+        for i in range(step):
+            q0 = q.copy()
+            for j in range(1, len(q) - 1):
+                for k in range(1, len(q.T) - 1):
+                    r = a * (dt / dx ** 2)
+                    s = a * (dt / dy ** 2)
+                    q[j, k] = q0[j, k] + r * (q0[j+1, k] - 2 * q0[j, k] + q0[j-1, k]) + \
+                            s * (q0[j, k+1] - 2 * q0[j, k] + q0[j, k-1])
+            # 結果の取得
+            time        = step * dt
+            temperature = q[index_x, index_y]
+            self.time_list.append(time)
+            self.temperature_list.append(temperature) 
+            # 境界条件を設定
+            q = q.T
+            q = self.boundary_condition(q)
+            q = q.T
+
+            # # 指定した間隔で画像保存
+            # if i % result_interval == 0:
+            #     print('Iteration=', i)
+            #     q = q.T
+            #     plot(x, y, q, i, dir, 1)
+            #     q = q.T
+        return q
+
 
     def plot(self, x, y, z, index_x, index_y):
         ''' 関数をプロットする '''
@@ -166,7 +206,7 @@ class Fusecalc:
         
         return index_x, index_y
     
-    def run(self):
+    def run_get_laststep_value(self):
         # 初期場の用意
         x, y, q = self.initial_field(self.x_max, self.y_max, self.dx, self.dy)
         # 境界条件の設定
@@ -179,9 +219,24 @@ class Fusecalc:
         if self.is_save:
             self.plot(x, y, self.result.T, index_x, index_y)
     
+    def run(self):
+        # 初期場の用意
+        x, y, q = self.initial_field(self.x_max, self.y_max, self.dx, self.dy)
+        # 境界条件の設定
+        q = self.boundary_condition(q)
+        # 計算
+        index_x, index_y = self.get_index()
+        result = self.sol_2d_diffusion_and_get_onepos_temp(x, y, q, self.dt, self.dx, self.dy, self.alpha, self.calctime, index_x, index_y)
+        if self.is_save:
+            self.plot(x, y, result.T, index_x, index_y)
+    
+    
     def get_result_value(self):
         return self.result_value
 
+    def get_result(self):
+        # 位置、時間、温度のリストを返すメソッド
+        return self.time_list, self.position_x_list, self.position_y_list, self.temperature_list
 
 if __name__ == '__main__':
     ''' 条件設定を行いシミュレーションを実行、流れのGIF画像を作成する '''
@@ -199,7 +254,13 @@ if __name__ == '__main__':
     fusecalc = Fusecalc(config)
     fusecalc.run()
     # ポスト処理
-    result = fusecalc.get_result_value()
+    time_list, position_x_list, position_y_list, temperature_list = fusecalc.get_result()
     shutil.copy2(args.job_config, os.path.join("./", config["JOB_NAME"]))
     with open(os.path.join("./", config["JOB_NAME"], "result.txt"), mode="w") as f:
-        f.write(f"{result}\n")
+        f.write("time, position_x, position_y, temperature\n")
+        for t in range(len(time_list)):
+            position_x  = position_x_list[t]
+            position_y  = position_y_list[t]
+            time        = time_list[t]
+            temperature = temperature_list[t]
+            f.write(f"{time}, {position_x}, {position_y}, {temperature}\n")
