@@ -1,0 +1,44 @@
+version: "3"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: model_db
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      TZ: Asia/Tokyo
+    ports:
+      - 3306:3306
+    tmpfs:
+      - /var/lib/mysql
+    hostname: mysql
+    stdin_open: true
+    restart: always
+    # volumes:
+    # - ./mysql/init:/docker-entrypoint-initdb.d
+    
+  model_db_api:
+    depends_on:
+      - db
+    container_name: model_db_api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - 8000:8000
+    tty:
+      true
+    environment:
+      - MYSQL_SERVER=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=password
+      - MYSQL_DB=model_db
+      # - WORKERS=2
+    
+    # restart: always
+  #   entrypoint: ["./run.sh"]
+  

@@ -1,0 +1,7 @@
+# mysql
+sqlalchemy
+pymysql
+cryptography
+# fastapi
+fastapi
+uvicorn
